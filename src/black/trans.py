@@ -374,15 +374,14 @@ class StringMerger(StringTransformer, CustomSplitMapMixin):
     def do_match(self, line: Line) -> TMatchResult:
         LL = line.leaves
 
-        is_valid_index = is_valid_index_factory(LL)
-
         string_indices = []
         idx = 0
-        while is_valid_index(idx):
+        num_leaves = len(LL)
+        while idx < num_leaves:
             leaf = LL[idx]
             if (
                 leaf.type == token.STRING
-                and is_valid_index(idx + 1)
+                and idx + 1 < num_leaves
                 and LL[idx + 1].type == token.STRING
             ):
                 if not is_part_of_annotation(leaf):
@@ -390,14 +389,14 @@ class StringMerger(StringTransformer, CustomSplitMapMixin):
 
                 # Advance to the next non-STRING leaf.
                 idx += 2
-                while is_valid_index(idx) and LL[idx].type == token.STRING:
+                while idx < num_leaves and LL[idx].type == token.STRING:
                     idx += 1
 
             elif leaf.type == token.STRING and "\\\n" in leaf.value:
                 string_indices.append(idx)
                 # Advance to the next non-STRING leaf.
                 idx += 1
-                while is_valid_index(idx) and LL[idx].type == token.STRING:
+                while idx < num_leaves and LL[idx].type == token.STRING:
                     idx += 1
 
             else:
@@ -497,8 +496,6 @@ class StringMerger(StringTransformer, CustomSplitMapMixin):
         """
         LL = line.leaves
 
-        is_valid_index = is_valid_index_factory(LL)
-
         # A dict of {string_idx: tuple[num_of_strings, string_leaf]}.
         merged_string_idx_dict: Dict[int, Tuple[int, Leaf]] = {}
         for string_idx in string_indices:
@@ -506,7 +503,7 @@ class StringMerger(StringTransformer, CustomSplitMapMixin):
             if isinstance(vresult, Err):
                 continue
             merged_string_idx_dict[string_idx] = self._merge_one_string_group(
-                LL, string_idx, is_valid_index
+                LL, string_idx
             )
 
         if not merged_string_idx_dict:
@@ -536,7 +533,7 @@ class StringMerger(StringTransformer, CustomSplitMapMixin):
         return Ok(new_line)
 
     def _merge_one_string_group(
-        self, LL: List[Leaf], string_idx: int, is_valid_index: Callable[[int], bool]
+        self, LL: List[Leaf], string_idx: int
     ) -> Tuple[int, Leaf]:
         """
         Merges one string group where the first string in the group is
@@ -547,6 +544,7 @@ class StringMerger(StringTransformer, CustomSplitMapMixin):
             number of strings merged and `leaf` is the newly merged string
             to be replaced in the new line.
         """
+        num_leaves = len(LL)
         # If the string group is wrapped inside an Atom node, we must make sure
         # to later replace that Atom with our new (merged) string leaf.
         atom_node = LL[string_idx].parent
@@ -593,7 +591,7 @@ class StringMerger(StringTransformer, CustomSplitMapMixin):
         prefix = ""
         while (
             not prefix
-            and is_valid_index(next_str_idx)
+            and next_str_idx < num_leaves
             and LL[next_str_idx].type == token.STRING
         ):
             prefix = get_string_prefix(LL[next_str_idx].value).lower()
@@ -612,7 +610,7 @@ class StringMerger(StringTransformer, CustomSplitMapMixin):
         NS = ""
         num_of_strings = 0
         next_str_idx = string_idx
-        while is_valid_index(next_str_idx) and LL[next_str_idx].type == token.STRING:
+        while next_str_idx < num_leaves and LL[next_str_idx].type == token.STRING:
             num_of_strings += 1
 
             SS = LL[next_str_idx].value
@@ -696,17 +694,18 @@ class StringMerger(StringTransformer, CustomSplitMapMixin):
                   support them, so we can change if pyright also gains support in the
                   future. See https://github.com/microsoft/pyright/issues/4359.)
         """
+        LL = line.leaves
+        num_leaves = len(LL)
         # We first check for "inner" stand-alone comments (i.e. stand-alone
         # comments that have a string leaf before them AND after them).
         for inc in [1, -1]:
             i = string_idx
             found_sa_comment = False
-            is_valid_index = is_valid_index_factory(line.leaves)
-            while is_valid_index(i) and line.leaves[i].type in [
+            while 0 <= i < num_leaves and LL[i].type in [
                 token.STRING,
                 STANDALONE_COMMENT,
             ]:
-                if line.leaves[i].type == STANDALONE_COMMENT:
+                if LL[i].type == STANDALONE_COMMENT:
                     found_sa_comment = True
                 elif found_sa_comment:
                     return TErr(
@@ -719,7 +718,7 @@ class StringMerger(StringTransformer, CustomSplitMapMixin):
         num_of_inline_string_comments = 0
         set_of_prefixes = set()
         num_of_strings = 0
-        for leaf in line.leaves[string_idx:]:
+        for leaf in LL[string_idx:]:
             if leaf.type != token.STRING:
                 # If the string group is trailed by a comma, we count the
                 # comments trailing the comma to be one of the string group's
@@ -781,15 +780,14 @@ class StringParenStripper(StringTransformer):
 
     def do_match(self, line: Line) -> TMatchResult:
         LL = line.leaves
-
-        is_valid_index = is_valid_index_factory(LL)
+        num_leaves = len(LL)
 
         string_indices = []
 
         idx = -1
         while True:
             idx += 1
-            if idx >= len(LL):
+            if idx >= num_leaves:
                 break
             leaf = LL[idx]
 
@@ -807,7 +805,7 @@ class StringParenStripper(StringTransformer):
 
             # Should be preceded by a non-empty LPAR...
             if (
-                not is_valid_index(idx - 1)
+                idx - 1 < 0
                 or LL[idx - 1].type != token.LPAR
                 or is_empty_lpar(LL[idx - 1])
             ):
@@ -816,7 +814,7 @@ class StringParenStripper(StringTransformer):
             # That LPAR should NOT be preceded by a function name or a closing
             # bracket (which could be a function which returns a function or a
             # list/dictionary that contains a function)...
-            if is_valid_index(idx - 2) and (
+            if idx - 2 >= 0 and (
                 LL[idx - 2].type == token.NAME or LL[idx - 2].type in CLOSING_BRACKETS
             ):
                 continue
@@ -830,7 +828,7 @@ class StringParenStripper(StringTransformer):
             # if the leaves in the parsed string include a PERCENT, we need to
             # make sure the initial LPAR is NOT preceded by an operator with
             # higher or equal precedence to PERCENT
-            if is_valid_index(idx - 2):
+            if idx - 2 >= 0:
                 # mypy can't quite follow unless we name this
                 before_lpar = LL[idx - 2]
                 if token.PERCENT in {leaf.type for leaf in LL[idx - 1 : next_idx]} and (
@@ -860,13 +858,13 @@ class StringParenStripper(StringTransformer):
 
             # Should be followed by a non-empty RPAR...
             if (
-                is_valid_index(next_idx)
+                next_idx < num_leaves
                 and LL[next_idx].type == token.RPAR
                 and not is_empty_rpar(LL[next_idx])
             ):
                 # That RPAR should NOT be followed by anything with higher
                 # precedence than PERCENT
-                if is_valid_index(next_idx + 1) and LL[next_idx + 1].type in {
+                if next_idx + 1 < num_leaves and LL[next_idx + 1].type in {
                     token.DOUBLESTAR,
                     token.LSQB,
                     token.LPAR,
@@ -876,7 +874,7 @@ class StringParenStripper(StringTransformer):
 
                 string_indices.append(string_idx)
                 idx = string_idx
-                while idx < len(LL) - 1 and LL[idx + 1].type == token.STRING:
+                while idx < num_leaves - 1 and LL[idx + 1].type == token.STRING:
                     idx += 1
 
         if string_indices:
@@ -1064,8 +1062,7 @@ class BaseStringSplitter(StringTransformer):
             for causing this line to exceed the line length limit.
         """
         LL = line.leaves
-
-        is_valid_index = is_valid_index_factory(LL)
+        num_leaves = len(LL)
 
         # We use the shorthand "WMA4" in comments to abbreviate "We must
         # account for". When giving examples, we use STRING to mean some/any
@@ -1080,11 +1077,11 @@ class BaseStringSplitter(StringTransformer):
         # WMA4 the whitespace at the beginning of the line.
         offset = line.depth * 4
 
-        if is_valid_index(string_idx - 1):
+        if string_idx - 1 >= 0:
             p_idx = string_idx - 1
             if (
-                LL[string_idx - 1].type == token.LPAR
-                and LL[string_idx - 1].value == ""
+                LL[p_idx].type == token.LPAR
+                and LL[p_idx].value == ""
                 and string_idx >= 2
             ):
                 # If the previous leaf is an empty LPAR placeholder, we should skip it.
@@ -1114,7 +1111,7 @@ class BaseStringSplitter(StringTransformer):
                     if leaf.type in CLOSING_BRACKETS:
                         break
 
-        if is_valid_index(string_idx + 1):
+        if string_idx + 1 < num_leaves:
             N = LL[string_idx + 1]
             if N.type == token.RPAR and N.value == "" and len(LL) > string_idx + 2:
                 # If the next leaf is an empty RPAR placeholder, we should skip it.
@@ -1124,7 +1121,7 @@ class BaseStringSplitter(StringTransformer):
                 # WMA4 a single comma at the end of the string (e.g `STRING,`).
                 offset += 1
 
-            if is_valid_index(string_idx + 2):
+            if string_idx + 2 < num_leaves:
                 NN = LL[string_idx + 2]
 
                 if N.type == token.DOT and NN.type == token.NAME:
@@ -1135,7 +1132,7 @@ class BaseStringSplitter(StringTransformer):
                     offset += 1
 
                     if (
-                        is_valid_index(string_idx + 3)
+                        string_idx + 3 < num_leaves
                         and LL[string_idx + 3].type == token.LPAR
                     ):
                         # WMA4 the left parenthesis character.
@@ -1286,20 +1283,19 @@ class StringSplitter(BaseStringSplitter, CustomSplitMapMixin):
         if self._prefer_paren_wrap_match(LL) is not None:
             return TErr("Line needs to be wrapped in parens first.")
 
-        is_valid_index = is_valid_index_factory(LL)
+        num_leaves = len(LL)
 
         idx = 0
 
         # The first two leaves MAY be the 'not in' keywords...
         if (
-            is_valid_index(idx)
-            and is_valid_index(idx + 1)
+            idx + 1 < num_leaves
             and [LL[idx].type, LL[idx + 1].type] == [token.NAME, token.NAME]
             and str(LL[idx]) + str(LL[idx + 1]) == "not in"
         ):
             idx += 2
         # Else the first leaf MAY be a string operator symbol or the 'in' keyword...
-        elif is_valid_index(idx) and (
+        elif idx < num_leaves and (
             LL[idx].type in self.STRING_OPERATORS
             or LL[idx].type == token.NAME
             and str(LL[idx]) == "in"
@@ -1307,11 +1303,11 @@ class StringSplitter(BaseStringSplitter, CustomSplitMapMixin):
             idx += 1
 
         # The next/first leaf MAY be an empty LPAR...
-        if is_valid_index(idx) and is_empty_lpar(LL[idx]):
+        if idx < num_leaves and is_empty_lpar(LL[idx]):
             idx += 1
 
         # The next/first leaf MUST be a string...
-        if not is_valid_index(idx) or LL[idx].type != token.STRING:
+        if idx >= num_leaves or LL[idx].type != token.STRING:
             return TErr("Line does not start with a string.")
 
         string_idx = idx
@@ -1321,15 +1317,15 @@ class StringSplitter(BaseStringSplitter, CustomSplitMapMixin):
         idx = string_parser.parse(LL, string_idx)
 
         # That string MAY be followed by an empty RPAR...
-        if is_valid_index(idx) and is_empty_rpar(LL[idx]):
+        if idx < num_leaves and is_empty_rpar(LL[idx]):
             idx += 1
 
         # That string / empty RPAR leaf MAY be followed by a comma...
-        if is_valid_index(idx) and LL[idx].type == token.COMMA:
+        if idx < num_leaves and LL[idx].type == token.COMMA:
             idx += 1
 
         # But no more leaves are allowed...
-        if is_valid_index(idx):
+        if idx < num_leaves:
             return TErr("This line does not end with a string.")
 
         return Ok([string_idx])
@@ -1345,8 +1341,8 @@ class StringSplitter(BaseStringSplitter, CustomSplitMapMixin):
         string_idx = string_indices[0]
 
         QUOTE = LL[string_idx].value[-1]
+        num_leaves = len(LL)
 
-        is_valid_index = is_valid_index_factory(LL)
         insert_str_child = insert_str_child_factory(LL[string_idx])
 
         prefix = get_string_prefix(LL[string_idx].value).lower()
@@ -1382,7 +1378,7 @@ class StringSplitter(BaseStringSplitter, CustomSplitMapMixin):
                 new_line.append(prefix_leaf)
 
         ends_with_comma = (
-            is_valid_index(string_idx + 1) and LL[string_idx + 1].type == token.COMMA
+            string_idx + 1 < num_leaves and LL[string_idx + 1].type == token.COMMA
         )
 
         def max_last_string() -> int:
@@ -1528,7 +1524,7 @@ class StringSplitter(BaseStringSplitter, CustomSplitMapMixin):
         maybe_append_string_operators(last_line)
 
         # If there are any leaves to the right of the target string...
-        if is_valid_index(string_idx + 1):
+        if string_idx + 1 < num_leaves:
             # We use `temp_value` here to determine how long the last line
             # would be if we were to append all the leaves to the right of the
             # target string to the last string line.
@@ -1638,9 +1634,7 @@ class StringSplitter(BaseStringSplitter, CustomSplitMapMixin):
                 OR
             None, otherwise.
         """
-        is_valid_index = is_valid_index_factory(string)
-
-        assert is_valid_index(max_break_idx)
+        assert 0 <= max_break_idx < len(string)
         assert_is_leaf_string(string)
 
         _illegal_split_indices = self._get_illegal_split_indices(string)
@@ -1663,7 +1657,7 @@ class StringSplitter(BaseStringSplitter, CustomSplitMapMixin):
 
             is_not_escaped = True
             j = i - 1
-            while is_valid_index(j) and string[j] == "\\":
+            while j >= 0 and string[j] == "\\":
                 is_not_escaped = not is_not_escaped
                 j -= 1
 
@@ -1680,7 +1674,7 @@ class StringSplitter(BaseStringSplitter, CustomSplitMapMixin):
 
         # First, we check all indices BELOW @max_break_idx.
         break_idx = max_break_idx
-        while is_valid_index(break_idx - 1) and not passes_all_checks(break_idx):
+        while break_idx - 1 > 0 and not passes_all_checks(break_idx):
             break_idx -= 1
 
         if not passes_all_checks(break_idx):
@@ -1690,10 +1684,10 @@ class StringSplitter(BaseStringSplitter, CustomSplitMapMixin):
             # to be longer than the specified line length, but it's probably
             # better than doing nothing at all.
             break_idx = max_break_idx + 1
-            while is_valid_index(break_idx + 1) and not passes_all_checks(break_idx):
+            while break_idx + 1 < len(string) and not passes_all_checks(break_idx):
                 break_idx += 1
 
-            if not is_valid_index(break_idx) or not passes_all_checks(break_idx):
+            if break_idx >= len(string) or not passes_all_checks(break_idx):
                 return None
 
         return break_idx
@@ -1850,11 +1844,9 @@ class StringParenWrapper(BaseStringSplitter, CustomSplitMapMixin):
         if parent_type(LL[0]) in [syms.return_stmt, syms.yield_expr] and LL[
             0
         ].value in ["return", "yield"]:
-            is_valid_index = is_valid_index_factory(LL)
-
-            idx = 2 if is_valid_index(1) and is_empty_par(LL[1]) else 1
+            idx = 2 if 1 < len(LL) and is_empty_par(LL[1]) else 1
             # The next visible leaf MUST contain a string...
-            if is_valid_index(idx) and LL[idx].type == token.STRING:
+            if idx < len(LL) and LL[idx].type == token.STRING:
                 return idx
 
         return None
@@ -1877,11 +1869,9 @@ class StringParenWrapper(BaseStringSplitter, CustomSplitMapMixin):
             and LL[0].type == token.NAME
             and LL[0].value == "else"
         ):
-            is_valid_index = is_valid_index_factory(LL)
-
-            idx = 2 if is_valid_index(1) and is_empty_par(LL[1]) else 1
+            idx = 2 if 1 < len(LL) and is_empty_par(LL[1]) else 1
             # The next visible leaf MUST contain a string...
-            if is_valid_index(idx) and LL[idx].type == token.STRING:
+            if idx < len(LL) and LL[idx].type == token.STRING:
                 return idx
 
         return None
@@ -1900,7 +1890,7 @@ class StringParenWrapper(BaseStringSplitter, CustomSplitMapMixin):
         # If this line is apart of an assert statement and the first leaf
         # contains the "assert" keyword...
         if parent_type(LL[0]) == syms.assert_stmt and LL[0].value == "assert":
-            is_valid_index = is_valid_index_factory(LL)
+            num_leaves = len(LL)
 
             for i, leaf in enumerate(LL):
                 # We MUST find a comma...
@@ -1908,7 +1898,7 @@ class StringParenWrapper(BaseStringSplitter, CustomSplitMapMixin):
                     idx = i + 2 if is_empty_par(LL[i + 1]) else i + 1
 
                     # That comma MUST be followed by a string...
-                    if is_valid_index(idx) and LL[idx].type == token.STRING:
+                    if idx < num_leaves and LL[idx].type == token.STRING:
                         string_idx = idx
 
                         # Skip the string trailer, if one exists.
@@ -1916,7 +1906,7 @@ class StringParenWrapper(BaseStringSplitter, CustomSplitMapMixin):
                         idx = string_parser.parse(LL, string_idx)
 
                         # But no more leaves are allowed...
-                        if not is_valid_index(idx):
+                        if idx >= num_leaves:
                             return string_idx
 
         return None
@@ -1938,7 +1928,7 @@ class StringParenWrapper(BaseStringSplitter, CustomSplitMapMixin):
             parent_type(LL[0]) in [syms.expr_stmt, syms.argument, syms.power]
             and LL[0].type == token.NAME
         ):
-            is_valid_index = is_valid_index_factory(LL)
+            num_leaves = len(LL)
 
             for i, leaf in enumerate(LL):
                 # We MUST find either an '=' or '+=' symbol...
@@ -1946,7 +1936,7 @@ class StringParenWrapper(BaseStringSplitter, CustomSplitMapMixin):
                     idx = i + 2 if is_empty_par(LL[i + 1]) else i + 1
 
                     # That symbol MUST be followed by a string...
-                    if is_valid_index(idx) and LL[idx].type == token.STRING:
+                    if idx < num_leaves and LL[idx].type == token.STRING:
                         string_idx = idx
 
                         # Skip the string trailer, if one exists.
@@ -1957,13 +1947,13 @@ class StringParenWrapper(BaseStringSplitter, CustomSplitMapMixin):
                         # of a function argument...
                         if (
                             parent_type(LL[0]) == syms.argument
-                            and is_valid_index(idx)
+                            and idx < num_leaves
                             and LL[idx].type == token.COMMA
                         ):
                             idx += 1
 
                         # But no more leaves are allowed...
-                        if not is_valid_index(idx):
+                        if idx >= num_leaves:
                             return string_idx
 
         return None
@@ -1982,7 +1972,7 @@ class StringParenWrapper(BaseStringSplitter, CustomSplitMapMixin):
         # If this line is a part of a dictionary key assignment or lambda expression...
         parent_types = [parent_type(LL[0]), parent_type(LL[0].parent)]
         if syms.dictsetmaker in parent_types or syms.lambdef in parent_types:
-            is_valid_index = is_valid_index_factory(LL)
+            num_leaves = len(LL)
 
             for i, leaf in enumerate(LL):
                 # We MUST find a colon, it can either be dict's or lambda's colon...
@@ -1990,7 +1980,7 @@ class StringParenWrapper(BaseStringSplitter, CustomSplitMapMixin):
                     idx = i + 2 if is_empty_par(LL[i + 1]) else i + 1
 
                     # That colon MUST be followed by a string...
-                    if is_valid_index(idx) and LL[idx].type == token.STRING:
+                    if idx < num_leaves and LL[idx].type == token.STRING:
                         string_idx = idx
 
                         # Skip the string trailer, if one exists.
@@ -1998,11 +1988,11 @@ class StringParenWrapper(BaseStringSplitter, CustomSplitMapMixin):
                         idx = string_parser.parse(LL, string_idx)
 
                         # That string MAY be followed by a comma...
-                        if is_valid_index(idx) and LL[idx].type == token.COMMA:
+                        if idx < num_leaves and LL[idx].type == token.COMMA:
                             idx += 1
 
                         # But no more leaves are allowed...
-                        if not is_valid_index(idx):
+                        if idx >= num_leaves:
                             return string_idx
 
         return None
@@ -2017,7 +2007,7 @@ class StringParenWrapper(BaseStringSplitter, CustomSplitMapMixin):
         )
         string_idx = string_indices[0]
 
-        is_valid_index = is_valid_index_factory(LL)
+        num_leaves = len(LL)
         insert_str_child = insert_str_child_factory(LL[string_idx])
 
         comma_idx = -1
@@ -2076,7 +2066,7 @@ class StringParenWrapper(BaseStringSplitter, CustomSplitMapMixin):
         string_line.append(string_leaf)
 
         old_rpar_leaf = None
-        if is_valid_index(string_idx + 1):
+        if string_idx + 1 < num_leaves:
             right_leaves = LL[string_idx + 1 :]
             if ends_with_comma:
                 right_leaves.pop()
@@ -2333,30 +2323,3 @@ def insert_str_child_factory(string_leaf: Leaf) -> Callable[[LN], None]:
         string_child_idx += 1
 
     return insert_str_child
-
-
-def is_valid_index_factory(seq: Sequence[Any]) -> Callable[[int], bool]:
-    """
-    Examples:
-        ```
-        my_list = [1, 2, 3]
-
-        is_valid_index = is_valid_index_factory(my_list)
-
-        assert is_valid_index(0)
-        assert is_valid_index(2)
-
-        assert not is_valid_index(3)
-        assert not is_valid_index(-1)
-        ```
-    """
-
-    def is_valid_index(idx: int) -> bool:
-        """
-        Returns:
-            True iff @idx is positive AND seq[@idx] does NOT raise an
-            IndexError.
-        """
-        return 0 <= idx < len(seq)
-
-    return is_valid_index
