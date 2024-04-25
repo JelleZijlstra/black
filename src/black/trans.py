@@ -37,6 +37,7 @@ from black.nodes import (
     is_empty_lpar,
     is_empty_par,
     is_empty_rpar,
+    is_keyword,
     is_part_of_annotation,
     parent_type,
     replace_child,
@@ -964,7 +965,6 @@ class StringParenStripper(StringTransformer):
                             token.PERCENT,
                             token.TILDE,
                             token.DOUBLESTAR,
-                            token.AWAIT,
                             token.LSQB,
                             token.LPAR,
                         }
@@ -975,6 +975,7 @@ class StringParenStripper(StringTransformer):
                         and before_lpar.parent.type == syms.factor
                         and (before_lpar.type in {token.PLUS, token.MINUS})
                     )
+                    or is_keyword(before_lpar, "await")
                 ):
                     continue
 

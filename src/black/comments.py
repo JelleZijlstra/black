@@ -10,6 +10,7 @@ from black.nodes import (
     WHITESPACE,
     container_of,
     first_leaf_of,
+    is_keyword,
     make_simple_prefix,
     preceding_leaf,
     syms,
@@ -341,13 +342,13 @@ def _generate_ignored_nodes_from_fmt_skip(
         while parent_sibling is not None and parent_sibling.type != syms.suite:
             ignored_nodes.insert(0, parent_sibling)
             parent_sibling = parent_sibling.prev_sibling
-        # Special case for `async_stmt` where the ASYNC token is on the
+        # Special case for `async_stmt` where the 'async' token is on the
         # grandparent node.
         grandparent = parent.parent
         if (
             grandparent is not None
             and grandparent.prev_sibling is not None
-            and grandparent.prev_sibling.type == token.ASYNC
+            and is_keyword(grandparent.prev_sibling, "async")
         ):
             ignored_nodes.insert(0, grandparent.prev_sibling)
         yield from iter(ignored_nodes)

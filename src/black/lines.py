@@ -23,6 +23,7 @@ from black.nodes import (
     STANDALONE_COMMENT,
     TEST_DESCENDANTS,
     child_towards,
+    is_keyword,
     is_docstring,
     is_import,
     is_multiline_string,
@@ -169,11 +170,9 @@ class Line:
             second_leaf: Optional[Leaf] = self.leaves[1]
         except IndexError:
             second_leaf = None
-        return (first_leaf.type == token.NAME and first_leaf.value == "def") or (
-            first_leaf.type == token.ASYNC
-            and second_leaf is not None
-            and second_leaf.type == token.NAME
-            and second_leaf.value == "def"
+        return is_keyword(first_leaf, "def") or (
+            is_keyword(first_leaf, "async")
+            and is_keyword(second_leaf, "def")
         )
 
     @property

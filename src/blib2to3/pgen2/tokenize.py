@@ -44,8 +44,6 @@ from typing import (
 
 from blib2to3.pgen2.grammar import Grammar
 from blib2to3.pgen2.token import (
-    ASYNC,
-    AWAIT,
     COMMENT,
     DEDENT,
     ENDMARKER,
@@ -336,7 +334,7 @@ class Untokenizer:
         for tok in iterable:
             toknum, tokval = tok[:2]
 
-            if toknum in (NAME, NUMBER, ASYNC, AWAIT):
+            if toknum in (NAME, NUMBER):
                 tokval += " "
 
             if toknum == INDENT:
@@ -589,15 +587,6 @@ def generate_tokens(
     contline: Optional[str] = None
     indents = [0]
 
-    # If we know we're parsing 3.7+, we can unconditionally parse `async` and
-    # `await` as keywords.
-    async_keywords = False if grammar is None else grammar.async_keywords
-    # 'stashed' and 'async_*' are used for async/await parsing
-    stashed: Optional[GoodTokenInfo] = None
-    async_def = False
-    async_def_indent = 0
-    async_def_nl = False
-
     strstart: Tuple[int, int]
     endprog_stack: List[Pattern[str]] = []
     formatspec_start: Tuple[int, int]
@@ -721,10 +710,6 @@ def generate_tokens(
             if pos == max:
                 break
 
-            if stashed:
-                yield stashed
-                stashed = None
-
             if line[pos] in "\r\n":  # skip blank lines
                 yield (NL, line[pos:], (lnum, pos), (lnum, len(line)), line)
                 continue
@@ -754,17 +739,7 @@ def generate_tokens(
                     )
                 indents = indents[:-1]
 
-                if async_def and async_def_indent >= indents[-1]:
-                    async_def = False
-                    async_def_nl = False
-                    async_def_indent = 0
-
                 yield (DEDENT, "", (lnum, pos), (lnum, pos), line)
-
-            if async_def and async_def_nl and async_def_indent >= indents[-1]:
-                async_def = False
-                async_def_nl = False
-                async_def_indent = 0
 
         else:  # continued statement
             if not line:
@@ -784,10 +759,6 @@ def generate_tokens(
                     else:
                         middle_token, end_token = token[:-1], token[-1]
                         middle_epos = end_spos = (lnum, end - 1)
-                    # TODO: unsure if this can be safely removed
-                    if stashed:
-                        yield stashed
-                        stashed = None
                     yield (
                         FSTRING_MIDDLE,
                         middle_token,
@@ -880,18 +851,10 @@ def generate_tokens(
                     newline = NEWLINE
                     if parenlev > 0 or fstring_state.is_in_fstring_expression():
                         newline = NL
-                    elif async_def:
-                        async_def_nl = True
-                    if stashed:
-                        yield stashed
-                        stashed = None
                     yield (newline, token, spos, epos, line)
 
                 elif initial == "#":
                     assert not token.endswith("\n")
-                    if stashed:
-                        yield stashed
-                        stashed = None
                     yield (COMMENT, token, spos, epos, line)
                 elif token in triple_quoted:
                     endprog = endprogs[token]
@@ -904,9 +867,6 @@ def generate_tokens(
 
                     endmatch = endprog.match(line, pos)
                     if endmatch:  # all on one line
-                        if stashed:
-                            yield stashed
-                            stashed = None
                         if not is_fstring_start(token):
                             pos = endmatch.end(0)
                             token = line[start:pos]
@@ -982,10 +942,6 @@ def generate_tokens(
                         contline = line
                         break
                     else:  # ordinary string
-                        if stashed:
-                            yield stashed
-                            stashed = None
-
                         if not is_fstring_start(token):
                             yield (STRING, token, spos, epos, line)
                         else:
@@ -1035,47 +991,8 @@ def generate_tokens(
                                 fstring_state.consume_lbrace()
 
                 elif initial.isidentifier():  # ordinary name
-                    if token in ("async", "await"):
-                        if async_keywords or async_def:
-                            yield (
-                                ASYNC if token == "async" else AWAIT,
-                                token,
-                                spos,
-                                epos,
-                                line,
-                            )
-                            continue
-
-                    tok = (NAME, token, spos, epos, line)
-                    if token == "async" and not stashed:
-                        stashed = tok
-                        continue
-
-                    if token in ("def", "for"):
-                        if stashed and stashed[0] == NAME and stashed[1] == "async":
-                            if token == "def":
-                                async_def = True
-                                async_def_indent = indents[-1]
-
-                            yield (
-                                ASYNC,
-                                stashed[1],
-                                stashed[2],
-                                stashed[3],
-                                stashed[4],
-                            )
-                            stashed = None
-
-                    if stashed:
-                        yield stashed
-                        stashed = None
-
-                    yield tok
+                    yield (NAME, token, spos, epos, line)
                 elif initial == "\\":  # continued stmt
-                    # This yield is new; needed for better idempotency:
-                    if stashed:
-                        yield stashed
-                        stashed = None
                     yield (NL, token, spos, (lnum, pos), line)
                     continued = 1
                 elif (
@@ -1091,17 +1008,10 @@ def generate_tokens(
                         parenlev += 1
                     elif initial in ")]}":
                         parenlev -= 1
-                    if stashed:
-                        yield stashed
-                        stashed = None
                     yield (OP, token, spos, epos, line)
             else:
                 yield (ERRORTOKEN, line[pos], (lnum, pos), (lnum, pos + 1), line)
                 pos += 1
-
-    if stashed:
-        yield stashed
-        stashed = None
 
     for _indent in indents[1:]:  # pop remaining indent levels
         yield (DEDENT, "", (lnum, 0), (lnum, 0), "")

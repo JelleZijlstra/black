@@ -21,7 +21,7 @@ typeparams: '[' typeparam (',' typeparam)* [','] ']'
 decorator: '@' namedexpr_test NEWLINE
 decorators: decorator+
 decorated: decorators (classdef | funcdef | async_funcdef)
-async_funcdef: ASYNC funcdef
+async_funcdef: 'async' funcdef
 funcdef: 'def' NAME [typeparams] parameters ['->' test] ':' suite
 parameters: '(' [typedargslist] ')'
 
@@ -111,7 +111,7 @@ assert_stmt: 'assert' test [',' test]
 type_stmt: "type" NAME [typeparams] '=' test
 
 compound_stmt: if_stmt | while_stmt | for_stmt | try_stmt | with_stmt | funcdef | classdef | decorated | async_stmt | match_stmt
-async_stmt: ASYNC (funcdef | with_stmt | for_stmt)
+async_stmt: 'async' (funcdef | with_stmt | for_stmt)
 if_stmt: 'if' namedexpr_test ':' suite ('elif' namedexpr_test ':' suite)* ['else' ':' suite]
 while_stmt: 'while' namedexpr_test ':' suite ['else' ':' suite]
 for_stmt: 'for' exprlist 'in' testlist_star_expr ':' suite ['else' ':' suite]
@@ -158,7 +158,7 @@ shift_expr: arith_expr (('<<'|'>>') arith_expr)*
 arith_expr: term (('+'|'-') term)*
 term: factor (('*'|'@'|'/'|'%'|'//') factor)*
 factor: ('+'|'-'|'~') factor | power
-power: [AWAIT] atom trailer* ['**' factor]
+power: ['await'] atom trailer* ['**' factor]
 atom: ('(' [yield_expr|testlist_gexp] ')' |
        '[' [listmaker] ']' |
        '{' [dictsetmaker] '}' |
@@ -197,7 +197,7 @@ argument: ( test [comp_for] |
             '*' test )
 
 comp_iter: comp_for | comp_if
-comp_for: [ASYNC] 'for' exprlist 'in' or_test [comp_iter]
+comp_for: ['async'] 'for' exprlist 'in' or_test [comp_iter]
 comp_if: 'if' old_test [comp_iter]
 
 # As noted above, testlist_safe extends the syntax allowed in list
@@ -216,7 +216,7 @@ comp_if: 'if' old_test [comp_iter]
 #
 # See https://bugs.python.org/issue27494
 old_comp_iter: old_comp_for | old_comp_if
-old_comp_for: [ASYNC] 'for' exprlist 'in' testlist_safe [old_comp_iter]
+old_comp_for: ['async'] 'for' exprlist 'in' testlist_safe [old_comp_iter]
 old_comp_if: 'if' old_test [old_comp_iter]
 
 testlist1: test (',' test)*

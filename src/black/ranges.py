@@ -12,10 +12,11 @@ from black.nodes import (
     Visitor,
     first_leaf,
     furthest_ancestor_with_last_leaf,
+    is_keyword,
     last_leaf,
     syms,
 )
-from blib2to3.pgen2.token import ASYNC, NEWLINE
+from blib2to3.pgen2.token import NEWLINE
 
 
 def parse_line_ranges(line_ranges: Sequence[str]) -> List[Tuple[int, int]]:
@@ -234,15 +235,11 @@ class _TopLevelStatementsVisitor(Visitor[None]):
         if _contains_standalone_comment(node):
             return
         # Find the semantic parent of this suite. For `async_stmt` and
-        # `async_funcdef`, the ASYNC token is defined on a separate level by the
+        # `async_funcdef`, the 'async' token is defined on a separate level by the
         # grammar.
         semantic_parent = node.parent
-        if semantic_parent is not None:
-            if (
-                semantic_parent.prev_sibling is not None
-                and semantic_parent.prev_sibling.type == ASYNC
-            ):
-                semantic_parent = semantic_parent.parent
+        if semantic_parent is not None and is_keyword(semantic_parent.prev_sibling, "async"):
+            semantic_parent = semantic_parent.parent
         if semantic_parent is not None and not _get_line_range(
             semantic_parent
         ).intersection(self._lines_set):
@@ -278,13 +275,12 @@ def _convert_unchanged_line_by_line(node: Node, lines_set: Set[int]) -> None:
                 # NOTE: Multiple suite nodes can exist as siblings in e.g. `if_stmt`.
                 nodes_to_ignore.insert(0, parent_sibling)
                 parent_sibling = parent_sibling.prev_sibling
-            # Special case for `async_stmt` and `async_funcdef` where the ASYNC
+            # Special case for `async_stmt` and `async_funcdef` where the 'async'
             # token is on the grandparent node.
             grandparent = leaf.parent.parent
             if (
                 grandparent is not None
-                and grandparent.prev_sibling is not None
-                and grandparent.prev_sibling.type == ASYNC
+                and is_keyword(grandparent.prev_sibling, "async")
             ):
                 nodes_to_ignore.insert(0, grandparent.prev_sibling)
             if not _get_line_range(nodes_to_ignore).intersection(lines_set):

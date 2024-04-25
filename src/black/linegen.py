@@ -40,6 +40,7 @@ from black.nodes import (
     fstring_to_string,
     get_annotation_type,
     is_arith_like,
+    is_keyword,
     is_async_stmt_or_funcdef,
     is_atom_with_invisible_parens,
     is_docstring,
@@ -122,9 +123,9 @@ class LineGenerator(Visitor[Line]):
             self.current_line.leaves[0]
         ):
             # Special case for async def/for/with statements. `visit_async_stmt`
-            # adds an `ASYNC` leaf then visits the child def/for/with statement
+            # adds an 'async' leaf then visits the child def/for/with statement
             # nodes. Line yields from those nodes shouldn't treat the former
-            # `ASYNC` leaf as a complete line.
+            # 'async' leaf as a complete line.
             return
 
         complete_line = self.current_line
@@ -324,7 +325,7 @@ class LineGenerator(Visitor[Line]):
         for child in children:
             yield from self.visit(child)
 
-            if child.type == token.ASYNC or child.type == STANDALONE_COMMENT:
+            if is_keyword(child, "async") or child.type == STANDALONE_COMMENT:
                 # STANDALONE_COMMENT happens when `# fmt: skip` is applied on the async
                 # line.
                 break
@@ -1444,7 +1445,7 @@ def _normalize_import_from(parent: Node, child: LN, index: int) -> None:
 
 
 def remove_await_parens(node: Node) -> None:
-    if node.children[0].type == token.AWAIT and len(node.children) > 1:
+    if is_keyword(node.children[0], "await") and len(node.children) > 1:
         if (
             node.children[1].type == syms.atom
             and node.children[1].children[0].type == token.LPAR
@@ -1468,7 +1469,7 @@ def remove_await_parens(node: Node) -> None:
             bracket_contents = node.children[1].children[1]
             if isinstance(bracket_contents, Node) and (
                 bracket_contents.type != syms.power
-                or bracket_contents.children[0].type == token.AWAIT
+                or is_keyword(bracket_contents.children[0], "await")
                 or any(
                     isinstance(child, Leaf) and child.type == token.DOUBLESTAR
                     for child in bracket_contents.children

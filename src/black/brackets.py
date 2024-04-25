@@ -12,6 +12,7 @@ from black.nodes import (
     OPENING_BRACKETS,
     UNPACKING_PARENTS,
     VARARGS_PARENTS,
+    is_keyword,
     is_vararg,
     syms,
 )
@@ -267,19 +268,16 @@ def is_split_before_delimiter(leaf: Leaf, previous: Optional[Leaf] = None) -> Pr
     ):
         return STRING_PRIORITY
 
-    if leaf.type not in {token.NAME, token.ASYNC}:
+    if leaf.type != token.NAME:
         return 0
 
     if (
         leaf.value == "for"
         and leaf.parent
         and leaf.parent.type in {syms.comp_for, syms.old_comp_for}
-        or leaf.type == token.ASYNC
+        or is_keyword(leaf, "async")
     ):
-        if (
-            not isinstance(leaf.prev_sibling, Leaf)
-            or leaf.prev_sibling.value != "async"
-        ):
+        if not is_keyword(leaf.prev_sibling, "async"):
             return COMPREHENSION_PRIORITY
 
     if (

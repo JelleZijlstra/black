@@ -882,15 +882,18 @@ def is_import(leaf: Leaf) -> bool:
     )
 
 
+def is_keyword(ln: Union[Leaf, Node, None], keyword: str) -> TypeGuard[Leaf]:
+    return isinstance(ln, Leaf) and ln.type == token.NAME and ln.value == keyword
+
+
 def is_with_or_async_with_stmt(leaf: Leaf) -> bool:
     """Return True if the given leaf starts a with or async with statement."""
     return bool(
-        leaf.type == token.NAME
-        and leaf.value == "with"
+        is_keyword(leaf, "with")
         and leaf.parent
         and leaf.parent.type == syms.with_stmt
     ) or bool(
-        leaf.type == token.ASYNC
+        is_keyword(leaf, "async")
         and leaf.next_sibling
         and leaf.next_sibling.type == syms.with_stmt
     )
@@ -903,7 +906,7 @@ def is_async_stmt_or_funcdef(leaf: Leaf) -> bool:
     the latter is used when it has decorators.
     """
     return bool(
-        leaf.type == token.ASYNC
+        is_keyword(leaf, "async")
         and leaf.parent
         and leaf.parent.type in {syms.async_stmt, syms.async_funcdef}
     )
